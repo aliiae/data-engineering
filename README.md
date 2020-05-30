@@ -6,6 +6,13 @@ A startup called Sparkify wants to analyze the data they've been collecting on s
 The analytics team is particularly interested in understanding what songs users are listening to. 
 Currently, they don't have an easy way to query their data, which resides in a directory of JSON logs on user activity on the app, as well as a directory with JSON metadata on the songs in their app.
 
+## Running
+
+```shell script
+python3 create_table.py
+python3 etl.py
+```
+
 ## Data model
 
 The data model uses the star schema optimized for queries on song play analysis.
