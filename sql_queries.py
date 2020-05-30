@@ -98,7 +98,7 @@ ON CONFLICT DO NOTHING;
 # Find the song ID and artist ID based on the title, artist name, and duration of a song.
 song_select = """
 SELECT songs.song_id, songs.artist_id
-FROM songs JOIN artists ON songs.artist_id = artists.artist_id
+FROM songs INNER JOIN artists ON songs.artist_id = artists.artist_id
 WHERE songs.title = %s AND artists.name = %s AND songs.duration = %s;
 """
 
