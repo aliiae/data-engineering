@@ -130,4 +130,4 @@ dmypy.json
 
 .idea
 DS_Store
-pg_data
+postgres/pg_data
