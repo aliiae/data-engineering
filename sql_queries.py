@@ -11,14 +11,19 @@ time_table_drop = "DROP TABLE IF EXISTS time;"
 songplay_table_create = """
 CREATE TABLE IF NOT EXISTS songplays (
     songplay_id SERIAL PRIMARY KEY, 
-    start_time bigint,
-    user_id int, 
+    start_time bigint NOT NULL,
+    user_id int NOT NULL, 
     level varchar,
     song_id varchar, 
     artist_id varchar,
     session_id int, 
     location varchar,
-    user_agent varchar
+    user_agent varchar,
+    
+    FOREIGN KEY (user_id) REFERENCES users (user_id),
+    FOREIGN KEY (song_id) REFERENCES songs (song_id),
+    FOREIGN KEY (artist_id) REFERENCES artists (artist_id),
+    FOREIGN KEY (start_time) REFERENCES time (start_time)
 );
 """
 
@@ -70,10 +75,11 @@ INSERT INTO songplays (start_time, user_id, level, song_id, artist_id, session_i
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
 """
 
+# Upserts user (updates the user's level since we need the most recent info on that).
 user_table_insert = """
 INSERT INTO users (user_id, first_name, last_name, gender, level)
 VALUES (%s, %s, %s, %s, %s)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (user_id) DO UPDATE SET level=EXCLUDED.level;
 """
 
 song_table_insert = """
@@ -85,7 +91,7 @@ ON CONFLICT DO NOTHING;
 artist_table_insert = """
 INSERT INTO artists (artist_id, name, location, latitude, longitude)
 VALUES (%s, %s, %s, %s, %s)
-ON CONFLICT DO NOTHING;;
+ON CONFLICT DO NOTHING;
 """
 
 time_table_insert = """
@@ -105,11 +111,11 @@ WHERE songs.title = %s AND artists.name = %s AND songs.duration = %s;
 # QUERY LISTS
 
 create_table_queries = [
-    songplay_table_create,
     user_table_create,
     song_table_create,
     artist_table_create,
     time_table_create,
+    songplay_table_create,
 ]
 drop_table_queries = [
     songplay_table_drop,
