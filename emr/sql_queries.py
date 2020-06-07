@@ -38,7 +38,7 @@ select_songplays = f"""
             year
             FROM logs.start_time
         ) AS year
-    FROM {log_temp_view} INNER JOIN {song_temp_view} 
+    FROM {log_temp_view} LEFT OUTER JOIN {song_temp_view} 
         ON song = songs.title
             AND logs.artist = songs.artist_name
             AND logs.length = songs.duration
