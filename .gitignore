@@ -129,5 +129,5 @@ dmypy.json
 .pyre/
 
 .idea
-DS_Store
+.DS_Store
 postgres/pg_data
