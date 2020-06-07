@@ -7,9 +7,6 @@ Currently, they don't have an easy way to query their data, which resides in a d
 
 ## Running
 
-To run the scripts locally, you will need access to an AWS Redshift cluster.
-Fill out the credentials in `dl.cfg` following the template. Make sure your cluster is in the us-west-2 region if you plan to use the given JSON data.
-
 To create and populate the tables, run in the terminal:
 
 ```bash
