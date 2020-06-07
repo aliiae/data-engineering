@@ -148,7 +148,7 @@ SELECT TIMESTAMP 'epoch' + (e.ts / 1000) * INTERVAL '1 second' as start_time,
     e.session_id,
     e.location,
     e.user_agent
-FROM staging_events e,
+FROM INNER JOIN staging_events e,
     staging_songs s
 WHERE e.page = 'NextSong'
     AND e.song = s.title

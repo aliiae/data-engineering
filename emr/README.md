@@ -1,7 +1,6 @@
-# Sparkify Example - Data Warehouse (Redshift)
+# Sparkify Example - Data Lake (EMR)
 
 ## Introduction
-
 A startup called Sparkify wants to analyze the data they've been collecting on songs and user activity on their new music streaming app.
 The analytics team is particularly interested in understanding what songs users are listening to.
 Currently, they don't have an easy way to query their data, which resides in a directory of JSON logs on user activity on the app, as well as a directory with JSON metadata on the songs in their app.
@@ -9,12 +8,11 @@ Currently, they don't have an easy way to query their data, which resides in a d
 ## Running
 
 To run the scripts locally, you will need access to an AWS Redshift cluster.
-Fill out the credentials in `dwh.cfg` following the template. Make sure your cluster is in the us-west-2 region if you plan to use the given JSON data.
+Fill out the credentials in `dl.cfg` following the template. Make sure your cluster is in the us-west-2 region if you plan to use the given JSON data.
 
 To create and populate the tables, run in the terminal:
 
 ```bash
-python3 create_tables.py
 python3 etl.py
 ```
 
@@ -27,11 +25,8 @@ python3 etl.py
 
 ### Code
 
-- `test.ipynb` displays the first few rows of each table.
-- `create_tables.py` drops and creates the tables.
-- `etl.ipynb` demonstrates reading and processing a single file from `song_data` and `log_data` and loads the data into the tables.
-- `etl.py` reads and processes files from `song_data` and `log_data` and loads them into the tables.
-- `sql_queries.py` contains all sql queries, and is imported into the last three files above.
+- **etl.py** reads data from S3, processes that data using Spark, and writes them back to S3.
+- **dl.cfg** contains AWS credentials.
 
 ## Data model
 
@@ -57,17 +52,10 @@ The data model uses the star schema optimized for queries on song play analysis.
 - **time** - timestamps of records in songplays broken down into specific units
   - start_time, hour, day, week, month, year, weekday
 
-## ETL
+## Pipeline
 
-The ETL pipeline is as follows:
+The pipelines steps are as follows:
 
-1. Import data from JSON files stored in S3 into staging tables.
-2. Import data from the staging tables into the target tables.
-
-### Staging Tables
-
-A staging table is a temporary table that holds all of the data that will be inserted into to a target table.
-We use two staging tables that source the content table:
-
-- **staging_events** - imports and holds the log JSON data, is used to populate **user**, **songplay** tables
-- **staging_songs** - imports and holds the songs JSON data, is used to populate the **artist**, **song**, **songplay** target tables
+1. Read song_data and load_data from S3.
+2. Transform them to create five different tables.
+3. Writes them to partitioned parquet files in table directories on S3.
