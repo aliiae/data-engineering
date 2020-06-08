@@ -18,7 +18,7 @@ INPUT_BUCKET = 'udacity-dend'
 
 default_args = {
     'owner': 'udacity',
-    'start_date': datetime(2020, 5, 8),
+    'start_date': datetime(2018, 11, 1),
     'depends_on_past': False,
     'retries': 3,
     'retry_delay': timedelta(seconds=300),
@@ -54,9 +54,10 @@ stage_events_to_redshift = StageToRedshiftOperator(
     conn_id=REDSHIFT_CONN_ID,
     aws_credentials_id=AWS_CREDENTIALS_ID,
     s3_bucket=INPUT_BUCKET,
-    s3_key='log-data/{execution_date.year}/{execution_date.month:02d}',
+    s3_key='log_data/{execution_date.year}/{execution_date.month}/',
     table='staging_events',
     file_format="JSON 's3://udacity-dend/log_json_path.json'",
+    provide_context=True,
 )
 
 stage_songs_to_redshift = StageToRedshiftOperator(
@@ -65,9 +66,10 @@ stage_songs_to_redshift = StageToRedshiftOperator(
     conn_id=REDSHIFT_CONN_ID,
     aws_credentials_id=AWS_CREDENTIALS_ID,
     s3_bucket=INPUT_BUCKET,
-    s3_key='song-data/*/*',
+    s3_key='song_data',
     table='staging_songs',
     file_format="JSON 'auto'",
+    provide_context=True,
 )
 
 load_songplays_table = LoadFactOperator(
