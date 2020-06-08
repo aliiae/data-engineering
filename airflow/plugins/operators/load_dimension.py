@@ -11,11 +11,11 @@ class LoadDimensionOperator(BaseOperator):
 
     @apply_defaults
     def __init__(
-        self, conn_id='', query='', table='', append_only=False, *args, **kwargs
+        self, conn_id='', sql='', table='', append_only=False, *args, **kwargs
     ):
         super(LoadDimensionOperator, self).__init__(*args, **kwargs)
         self.conn_id = conn_id
-        self.query = query
+        self.query = sql
         self.table = table
         self.append_only = append_only
 

@@ -52,6 +52,6 @@ class StageToRedshiftOperator(BaseOperator):
             access_key=credentials.secret_key,
             file_format=self.file_format,
         )
-        self.log.info(f'Running query "{copy_query}" in table {self.table}')
+        self.log.info(f'Running query "{copy_query}" in table {self.table}, s3_path is {s3_path}')
         redshift.run(copy_query)
         self.log.info(f'Success: {self.task_id} finished for {self.table}')

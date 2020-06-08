@@ -8,10 +8,10 @@ class LoadFactOperator(BaseOperator):
     sql_template = 'INSERT INTO public.{table} {query}'
 
     @apply_defaults
-    def __init__(self, conn_id='', query='', table='', *args, **kwargs):
+    def __init__(self, conn_id='', sql='', table='', *args, **kwargs):
         super(LoadFactOperator, self).__init__(*args, **kwargs)
         self.conn_id = conn_id
-        self.query = query
+        self.query = sql
         self.table = table
 
     def execute(self, context):

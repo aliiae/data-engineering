@@ -21,6 +21,7 @@ class DataQualityOperator(BaseOperator):
                 self._has_more_than_zero_rows(table, redshift_hook)
             except Exception as e:
                 self.log.error(e)
+                raise e
             self.log.info(f'Success: {self.task_id} finished for {table}')
 
     def _has_more_than_zero_rows(self, table, redshift_hook):
