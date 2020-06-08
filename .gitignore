@@ -129,10 +129,11 @@ dmypy.json
 .pyre/
 
 .idea
+.vscode
 .DS_Store
 postgres/pg_data
 emr/data/log-data
 emr/data/song-data
 emr/data/log_data
 emr/data/song_data
-emr/dl.cfg
+*/*.cfg

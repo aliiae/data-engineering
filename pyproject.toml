@@ -1,0 +1,10 @@
+[tool.flakehell]
+exclude = []
+format = "grouped"
+max_line_length = 90
+show_source = true
+
+[tool.flakehell.plugins]
+"flake8-*" = ["+*"]
+# explicitly disable plugin
+flake8-docstrings = ["-*"]

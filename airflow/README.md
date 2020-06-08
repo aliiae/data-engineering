@@ -1,30 +1,17 @@
-# Sparkify Example - Data Lake (EMR)
+# Sparkify Example - Pipelines (Airflow)
 
 ## Introduction
+
 A startup called Sparkify wants to analyze the data they've been collecting on songs and user activity on their new music streaming app.
 The analytics team is particularly interested in understanding what songs users are listening to.
 Currently, they don't have an easy way to query their data, which resides in a directory of JSON logs on user activity on the app, as well as a directory with JSON metadata on the songs in their app.
 
-## Running
-
-To create and populate the tables, run in the terminal:
-
-```bash
-python3 etl.py
-```
-
 ## Project Structure
 
-### Data
-
-- `data/song_data` contains JSON files with song metadata (one JSON per song).
-- `data/log_data` contains JSON logs of Sparkify's user activity, partitioned by year and month (one JSON per day).
-
-### Code
-
-- **etl.py** reads data from S3, processes that data using Spark, and writes them back to S3.
-- **sql_queries.py** contains all SQL queries.
-- **dl.cfg** contains AWS credentials.
+- `dags/udac_example_dag.py` has the DAG and multiple tasks. 
+- `dags/create_tables.sql` includes all SQL queries needed to create both staging and destination tables.
+- `plugins/operators` contains custom operators.
+- `plugins/operators/helpers/sql_queries` stores SQL queries for individual tables in Redshift.
 
 ## Data model
 
@@ -50,10 +37,22 @@ The data model uses the star schema optimized for queries on song play analysis.
 - **time** - timestamps of records in songplays broken down into specific units
   - start_time, hour, day, week, month, year, weekday
 
+## ETL
+
+The ETL pipeline is as follows:
+
+1. Import data from JSON files stored in S3 into staging tables.
+2. Import data from the staging tables into the target tables.
+
+### Staging Tables
+
+A staging table is a temporary table that holds all of the data that will be inserted into to a target table.
+We use two staging tables that source the content table:
+
+- **staging_events** - imports and holds the log JSON data, is used to populate **user**, **songplay** tables
+- **staging_songs** - imports and holds the songs JSON data, is used to populate the **artist**, **song**, **songplay** target tables
+
 ## Pipeline
 
-The pipelines steps are as follows:
+![DAG Diagram](dag.png)
 
-1. Read song_data and load_data from S3.
-2. Transform them to create five different tables.
-3. Writes them to partitioned parquet files in table directories on S3.
