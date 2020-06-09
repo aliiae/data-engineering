@@ -137,3 +137,5 @@ emr/data/song-data
 emr/data/log_data
 emr/data/song_data
 */*.cfg
+
+capstone/venv
