@@ -1,4 +1,5 @@
 import configparser
+import csv
 from typing import Dict
 
 from pyspark import Broadcast
@@ -146,7 +147,6 @@ def get_ppd_tables(
     headers = _get_ppd_headers(headers_path)
     df = spark.read.csv(input_path, header=False).toDF(*headers)
     df = df.filter("record_status = 'A'")
-    tables = {"original": df}
     property_types = {
         "D": "detached",
         "S": "semi-detached",
@@ -181,8 +181,11 @@ def get_ppd_tables(
             + ["is_new", "date"]
         )
     )
-    tables["property"] = write_property_table(df, output_path)
-    tables["time"] = write_time_table(df, output_path)
+    tables = {
+        "original": df,
+        "property": write_property_table(df, output_path),
+        "time": write_time_table(df, output_path),
+    }
     return tables
 
 
@@ -215,16 +218,20 @@ def get_postcode_tables(
     ]
     df = spark.read.csv(input_path, header=False).toDF(*headers)
     countries = {"E": "England", "W": "Wales", "S": "Scotland", "N": "Northern Ireland"}
+    with open(region_names_path) as region_names_file:
+        reader = csv.reader(region_names_file)
+        region_names = {row[1]: row[0] for row in reader}
+    region_names = spark.sparkContext.broadcast(region_names)
     countries = spark.sparkContext.broadcast(countries)
     tables = {
-        "postcode": write_postcode_table(df, region_names_path, countries, output_path)
+        "postcode": write_postcode_table(df, region_names, countries, output_path)
     }
     return tables
 
 
 def write_postcode_table(
     df: DataFrame,
-    region_names_path: str,
+    region_names: Broadcast,
     countries: Broadcast,
     output_path: str,
     filename: str = "postcode.parquet",
@@ -233,7 +240,7 @@ def write_postcode_table(
     Extract a postcode dimension table from the staging data and save it in the parquet format.
     Args:
         df: Staging dataframe containing source data.
-        region_names_path: Path to where the resulting parquet files are saved.
+        region_names: Mapping of region codes to their names.
         countries: Mapping of the initial letters of the country codes to the country name.
         output_path: Path to where the resulting parquet files are saved.
         filename: Optional filename of the resulting parquet directory in the output path.
@@ -243,11 +250,11 @@ def write_postcode_table(
     postcode_table = _add_location(df)
     postcode_table = _normalise_postcode(postcode_table)
     postcode_table = _add_country_name(postcode_table, countries)
-    postcode_table = _add_region_name(postcode_table, region_names_path)
+    postcode_table = _add_region_name(postcode_table, region_names)
     postcode_table = postcode_table.select(
-        ["postcode", "district", "country", "longitude", "latitude",]
+        ["postcode", "district", "country", "longitude", "latitude"]
     )
-    postcode_table.write.parquet(f"{output_path}/{filename}")
+    postcode_table.write.partitionBy(["district"]).parquet(f"{output_path}/{filename}")
     logger.info("Saved postcode table")
     return postcode_table
 
@@ -256,9 +263,9 @@ def main():
     """Read data from S3, process the data using Spark, and write it back to S3."""
     spark = create_spark_session()
 
-    # ppd_tables = get_ppd_tables(spark, PPD_PATH, OUTPUT_DATA, PPD_HEADERS)
+    ppd_tables = get_ppd_tables(spark, PPD_PATH, OUTPUT_DATA, PPD_HEADERS)
     get_postcode_tables(spark, POSTCODE_PATH, OUTPUT_DATA, REGION_NAMES)
-    # write_sale_table(ppd_tables["original"], ppd_tables["property"], OUTPUT_DATA)
+    write_sale_table(ppd_tables["original"], ppd_tables["property"], OUTPUT_DATA)
 
     spark.stop()
 

@@ -45,6 +45,7 @@ def _normalise_address(df: DataFrame) -> DataFrame:
 
 def _normalise_postcode(df: DataFrame) -> DataFrame:
     """Remove whitespaces from postcodes to ensure consistency."""
+    df = df.where(f.col("postcode").isNotNull())
     df = df.withColumn(
         "postcode", f.udf(lambda code: code.strip().replace(" ", ""))(f.col("postcode"))
     )
@@ -62,13 +63,13 @@ def _add_country_name(df: DataFrame, countries: Broadcast) -> DataFrame:
     return df
 
 
-def _add_region_name(df: DataFrame, region_names_path: str) -> DataFrame:
+def _add_region_name(df: DataFrame, region_names: Broadcast) -> DataFrame:
     """Add a column with a region name based on the provided dictionary."""
-    region_names_df = pd.read_csv(region_names_path)
-    area_codes = dict(zip(region_names_df["AreaCode"], region_names_df["RegionName"]))
     df = df.withColumn(
         "district",
-        f.udf(lambda code: area_codes.get("code", None))(f.col("admin_district_code")),
+        f.udf(lambda code: region_names.value.get(code, None))(
+            f.col("admin_district_code")
+        ),
     )
     return df
 
@@ -83,7 +84,9 @@ def _add_location(df: DataFrame) -> DataFrame:
     )
     df = df.withColumn("latitude", latitude(f.col("eastings"), f.col("northings")))
     df = df.withColumn("longitude", longitude(f.col("eastings"), f.col("northings")))
-    df = df.where(f.col("latitude").isNotNull())  # clean up values that couldn't be converted
+    df = df.where(
+        f.col("latitude").isNotNull()
+    )  # clean up values that couldn't be converted
     return df
 
 
