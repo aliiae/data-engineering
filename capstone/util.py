@@ -33,7 +33,7 @@ def _get_ppd_headers(headers_path: str) -> List[str]:
 def _normalise_address(df: DataFrame) -> DataFrame:
     """Concatenate street, primary and secondary lines into a single address."""
     return df.withColumn(
-        "address",
+        "property_address",
         f.udf(
             lambda paon, saon, street: f"{street}; {paon}; {saon}"
             if saon
@@ -47,7 +47,8 @@ def _normalise_postcode(df: DataFrame) -> DataFrame:
     """Remove whitespaces from postcodes to ensure consistency."""
     df = df.where(f.col("postcode").isNotNull())
     df = df.withColumn(
-        "postcode", f.udf(lambda code: code.strip().replace(" ", ""))(f.col("postcode"))
+        "postcode",
+        f.udf(lambda code: code.strip().replace(" ", "").upper())(f.col("postcode")),
     )
     return df
 
@@ -91,7 +92,9 @@ def _add_location(df: DataFrame) -> DataFrame:
 
 
 def _bng_to_latlon(east: int, north: int, lat=True) -> Optional[float]:
-    if 100000 < east < 999999:
+    try:
         res = utm.to_latlon(east, north, 30, "U")
         return float(res[0]) if lat else float(res[1])
-    return None
+    except ValueError as e:
+        logger.warning(f'Invalid coords: {east}, {north}')
+        return None

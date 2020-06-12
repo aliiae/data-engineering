@@ -1,0 +1,4 @@
+pandas
+pyspark
+utm
+psycopg2-binary

@@ -139,3 +139,5 @@ emr/data/song_data
 */*.cfg
 
 capstone/venv
+capstone/codepo_gb
+capstone/output

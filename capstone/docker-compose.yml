@@ -1,0 +1,21 @@
+version: '3'
+services:
+  database:
+    image: "postgres"
+    env_file:
+      - .env
+    volumes:
+      - pgdata:/var/lib/postgresql/data/
+      - output:/data
+    ports:
+    - 5432:5432
+    expose:
+      - 5432
+
+volumes:
+  pgdata:
+  output:
+
+#docker run --rm --network=host -v `pwd`/ouput:/data postgres \
+#  psql -h localhost -p 5432 -U postgres -c \
+#    "\\copy postcode FROM '/Users/rutargetuser/GoogleDrive/2020-2/Github/postgres-models/capstone/data/property.csv/' WITH csv"

@@ -36,37 +36,36 @@ def create_spark_session() -> SparkSession:
 
 
 def write_property_table(
-    df: DataFrame, output_path, filename: str = "property.parquet"
+    df: DataFrame, output_path, filename: str = "property.csv"
 ) -> DataFrame:
     """
-    Extract a property dimension table from the staging data and save it in the parquet format.
+    Extract a property dimension table from the staging data and save it in the csv format.
     Args:
         df: Staging dataframe containing source data.
-        output_path: Path to where the resulting parquet files are saved.
-        filename: Optional filename of the resulting parquet directory in the output path.
+        output_path: Path to where the resulting csv files are saved.
+        filename: Optional filename of the resulting csv directory in the output path.
 
     Returns: A property dimension dataframe.
     """
     property_table = (
         df.where(f.col("property_type").isNotNull())
-        .drop_duplicates(["property_type", "is_new", "duration"])
-        .withColumn("property_id", f.monotonically_increasing_id())
-        .select(["property_id", "property_type", "is_new", "duration"])
+        .drop_duplicates(["property_address"])
+        .select(["property_address", "property_type", "is_new", "duration"])
     )
-    property_table.write.parquet(f"{output_path}/{filename}")
+    property_table.write.csv(f"{output_path}/{filename}")
     logger.info("Saved property table")
     return property_table
 
 
 def write_time_table(
-    df: DataFrame, output_path, filename: str = "time.parquet"
+    df: DataFrame, output_path, filename: str = "time.csv"
 ) -> DataFrame:
     """
-    Extract a time dimension table from the staging data and save it in the parquet format.
+    Extract a time dimension table from the staging data and save it in the csv format.
     Args:
         df: Staging dataframe containing source data.
-        output_path: Path to where the resulting parquet files are saved.
-        filename: Optional filename of the resulting parquet directory in the output path.
+        output_path: Path to where the resulting csv files are saved.
+        filename: Optional filename of the resulting csv directory in the output path.
 
     Returns: A time dimension dataframe.
     """
@@ -79,7 +78,7 @@ def write_time_table(
         .withColumn("week", f.weekofyear(time_table["date"]))
         .withColumn("weekday", f.dayofweek(time_table["date"]))
     )
-    time_table.write.parquet(f"{output_path}/{filename}")
+    time_table.write.csv(f"{output_path}/{filename}")
     logger.info("Saved time table")
     return time_table
 
@@ -88,15 +87,15 @@ def write_sale_table(
     df: DataFrame,
     property_table: DataFrame,
     output_path: str,
-    filename: str = "sale.parquet",
+    filename: str = "sale.csv",
 ) -> DataFrame:
     """
-    Extract a sale transaction (fact) table from the staging data and save it in the parquet format.
+    Extract a sale transaction (fact) table from the staging data and save it in the csv format.
     Args:
         df: Staging dataframe containing source data.
         property_table: Property dimension dataframe to join and extract property id.
-        output_path: Path to where the resulting parquet files are saved.
-        filename: Optional filename of the resulting parquet directory in the output path.
+        output_path: Path to where the resulting csv files are saved.
+        filename: Optional filename of the resulting csv directory in the output path.
 
     Returns: A sale transaction dataframe.
     """
@@ -109,22 +108,13 @@ def write_sale_table(
             ),
         )
         .withColumn("price", df["price"].cast(t.IntegerType()))
-        .withColumn("year", f.year(df["date"]))
-        .withColumn("month", f.month(df["date"]))
     )
-    sale_table = _normalise_address(sale_table)
     sale_table = _normalise_postcode(sale_table)
-    sale_table = sale_table.join(
-        property_table,
-        [
-            property_table.property_type == sale_table.property_type,
-            property_table.is_new == sale_table.is_new,
-            property_table.duration == sale_table.duration,
-        ],
-    ).select(
-        ["id", "price", "date", "property_id", "postcode", "address", "year", "month"]
+    sale_table = sale_table.filter("year == 1998")
+    sale_table = sale_table.select(
+        ["id", "price", "date", "postcode", "property_address"]
     )
-    sale_table.write.partitionBy(["year", "month"]).parquet(f"{output_path}/{filename}")
+    sale_table.write.csv(f"{output_path}/{filename}")
     logger.info("Saved sale table")
     return sale_table
 
@@ -134,19 +124,17 @@ def get_ppd_tables(
 ) -> Dict[str, DataFrame]:
     """
     Process Price Paid Dataset (PPD) by extracting fact and dimension tables
-    and saving them to S3 in the parquet format.
+    and saving them to S3 in the csv format.
     Args:
         spark: Current Spark session object.
         input_path: Path to the PPD dataset in the CSV format.
-        output_path: Path where the resulting parquet files are saved.
+        output_path: Path where the resulting csv files are saved.
         headers_path: Path to the PPD headers TSV file.
 
     Returns: A dictionary mapping table name to its dataframe.
     The full staging dataset is mapped as "original".
     """
-    headers = _get_ppd_headers(headers_path)
-    df = spark.read.csv(input_path, header=False).toDF(*headers)
-    df = df.filter("record_status = 'A'")
+    df = read_ppd_table(spark, input_path, headers_path)
     property_types = {
         "D": "detached",
         "S": "semi-detached",
@@ -176,10 +164,10 @@ def get_ppd_tables(
             ),
         )
         .withColumn("date", f.to_date(df["date_of_transfer"]))
-        .select(
-            [column for column in df.columns if column not in {"old_new"}]
-            + ["is_new", "date"]
-        )
+    )
+    df = _normalise_address(df).select(
+        [column for column in df.columns if column not in {"old_new"}]
+        + ["is_new", "date", "property_address"]
     )
     tables = {
         "original": df,
@@ -189,21 +177,44 @@ def get_ppd_tables(
     return tables
 
 
+def read_ppd_table(
+    spark: SparkSession, input_path: str, headers_path: str
+) -> DataFrame:
+    headers = _get_ppd_headers(headers_path)
+    df = spark.read.csv(input_path, header=False).toDF(*headers)
+    df = df.filter("record_status = 'A'")
+    return df
+
+
 def get_postcode_tables(
     spark: SparkSession, input_path: str, output_path: str, region_names_path: str
 ) -> Dict[str, DataFrame]:
     """
     Process Code-Point Open dataset by extracting a postcode dimension table
-    and saving it to S3 in the parquet format.
+    and saving it to S3 in the csv format.
 
     Args:
         spark: Current Spark session.
         input_path: Path to the postcodes dataset file.
-        output_path: Path to where the resulting parquet files are saved.
+        output_path: Path to where the resulting csv files are saved.
         region_names_path: Path to the CSV mapping of the UK administrative codes to postcodes.
 
     Returns: A dictionary mapping table names to their dataframes.
     """
+    df = read_postcodes(spark, input_path)
+    countries = {"E": "England", "W": "Wales", "S": "Scotland", "N": "Northern Ireland"}
+    with open(region_names_path) as region_names_file:
+        reader = csv.reader(region_names_file)
+        region_names = {row[1]: row[0] for row in reader}
+    region_names = spark.sparkContext.broadcast(region_names)
+    countries = spark.sparkContext.broadcast(countries)
+    tables = {
+        "postcode": write_postcode_table(df, region_names, countries, output_path)
+    }
+    return tables
+
+
+def read_postcodes(spark: SparkSession, input_path: str) -> DataFrame:
     headers = [
         "postcode",
         "positional_quality_indicator",
@@ -217,16 +228,7 @@ def get_postcode_tables(
         "admin_ward_code",
     ]
     df = spark.read.csv(input_path, header=False).toDF(*headers)
-    countries = {"E": "England", "W": "Wales", "S": "Scotland", "N": "Northern Ireland"}
-    with open(region_names_path) as region_names_file:
-        reader = csv.reader(region_names_file)
-        region_names = {row[1]: row[0] for row in reader}
-    region_names = spark.sparkContext.broadcast(region_names)
-    countries = spark.sparkContext.broadcast(countries)
-    tables = {
-        "postcode": write_postcode_table(df, region_names, countries, output_path)
-    }
-    return tables
+    return df
 
 
 def write_postcode_table(
@@ -234,16 +236,16 @@ def write_postcode_table(
     region_names: Broadcast,
     countries: Broadcast,
     output_path: str,
-    filename: str = "postcode.parquet",
+    filename: str = "postcode.csv",
 ) -> DataFrame:
     """
-    Extract a postcode dimension table from the staging data and save it in the parquet format.
+    Extract a postcode dimension table from the staging data and save it in the csv format.
     Args:
         df: Staging dataframe containing source data.
         region_names: Mapping of region codes to their names.
         countries: Mapping of the initial letters of the country codes to the country name.
-        output_path: Path to where the resulting parquet files are saved.
-        filename: Optional filename of the resulting parquet directory in the output path.
+        output_path: Path to where the resulting csv files are saved.
+        filename: Optional filename of the resulting csv directory in the output path.
 
     Returns: A postcode dimension dataframe.
     """
@@ -254,7 +256,8 @@ def write_postcode_table(
     postcode_table = postcode_table.select(
         ["postcode", "district", "country", "longitude", "latitude"]
     )
-    postcode_table.write.partitionBy(["district"]).parquet(f"{output_path}/{filename}")
+    postcode_table = postcode_table.filter("postcode == 'B12JB'")
+    postcode_table.write.csv(f"{output_path}/{filename}")
     logger.info("Saved postcode table")
     return postcode_table
 
