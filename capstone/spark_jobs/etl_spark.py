@@ -1,21 +1,17 @@
 import configparser
 import csv
-from typing import Dict
+import logging
+from typing import Dict, List, Optional
 
+import pandas as pd
+import utm
 from pyspark import Broadcast
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as f
 from pyspark.sql import types as t
 
-from util import (
-    _add_country_name,
-    _add_location,
-    _add_region_name,
-    _get_ppd_headers,
-    _normalise_address,
-    _normalise_postcode,
-    logger,
-)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 config = configparser.ConfigParser()
 config.read("credentials.cfg")
@@ -45,6 +41,7 @@ def write_property_table(
         output_path: Path to where the resulting csv files are saved.
         filename: Optional filename of the resulting csv directory in the output path.
 
+
     Returns: A property dimension dataframe.
     """
     property_table = (
@@ -52,13 +49,14 @@ def write_property_table(
         .drop_duplicates(["property_address"])
         .select(["property_address", "property_type", "is_new", "duration"])
     )
-    property_table.write.csv(f"{output_path}/{filename}")
-    logger.info("Saved property table")
+    if output_path:
+        property_table.write.csv(f"{output_path}/{filename}")
+        logger.info("Saved property table")
     return property_table
 
 
 def write_time_table(
-    df: DataFrame, output_path, filename: str = "time.csv"
+    df: DataFrame, output_path, filename: str = "time.csv",
 ) -> DataFrame:
     """
     Extract a time dimension table from the staging data and save it in the csv format.
@@ -66,6 +64,7 @@ def write_time_table(
         df: Staging dataframe containing source data.
         output_path: Path to where the resulting csv files are saved.
         filename: Optional filename of the resulting csv directory in the output path.
+
 
     Returns: A time dimension dataframe.
     """
@@ -78,24 +77,22 @@ def write_time_table(
         .withColumn("week", f.weekofyear(time_table["date"]))
         .withColumn("weekday", f.dayofweek(time_table["date"]))
     )
-    time_table.write.csv(f"{output_path}/{filename}")
-    logger.info("Saved time table")
+    if output_path:
+        time_table.write.csv(f"{output_path}/{filename}")
+        logger.info("Saved time table")
     return time_table
 
 
 def write_sale_table(
-    df: DataFrame,
-    property_table: DataFrame,
-    output_path: str,
-    filename: str = "sale.csv",
+    df: DataFrame, output_path: str, filename: str = "sale.csv",
 ) -> DataFrame:
     """
     Extract a sale transaction (fact) table from the staging data and save it in the csv format.
     Args:
         df: Staging dataframe containing source data.
-        property_table: Property dimension dataframe to join and extract property id.
         output_path: Path to where the resulting csv files are saved.
         filename: Optional filename of the resulting csv directory in the output path.
+
 
     Returns: A sale transaction dataframe.
     """
@@ -108,19 +105,24 @@ def write_sale_table(
             ),
         )
         .withColumn("price", df["price"].cast(t.IntegerType()))
+        .withColumn("year", f.year(df["date"]))
+        .withColumn("month", f.month(df["date"]))
     )
     sale_table = _normalise_postcode(sale_table)
-    sale_table = sale_table.filter("year == 1998")
     sale_table = sale_table.select(
-        ["id", "price", "date", "postcode", "property_address"]
+        ["id", "price", "date", "postcode", "property_address", "year", "month"]
     )
-    sale_table.write.csv(f"{output_path}/{filename}")
-    logger.info("Saved sale table")
+    if output_path:
+        sale_table.write.partitionBy(["year", "month"]).csv(f"{output_path}/{filename}")
+        logger.info("Saved sale table")
     return sale_table
 
 
 def get_ppd_tables(
-    spark: SparkSession, input_path, output_path: str, headers_path: str
+    spark: SparkSession,
+    input_path,
+    headers_path: str,
+    output_path: Optional[str] = None,
 ) -> Dict[str, DataFrame]:
     """
     Process Price Paid Dataset (PPD) by extracting fact and dimension tables
@@ -132,7 +134,6 @@ def get_ppd_tables(
         headers_path: Path to the PPD headers TSV file.
 
     Returns: A dictionary mapping table name to its dataframe.
-    The full staging dataset is mapped as "original".
     """
     df = read_ppd_table(spark, input_path, headers_path)
     property_types = {
@@ -170,9 +171,9 @@ def get_ppd_tables(
         + ["is_new", "date", "property_address"]
     )
     tables = {
-        "original": df,
         "property": write_property_table(df, output_path),
         "time": write_time_table(df, output_path),
+        "sale": write_sale_table(df, output_path),
     }
     return tables
 
@@ -187,7 +188,10 @@ def read_ppd_table(
 
 
 def get_postcode_tables(
-    spark: SparkSession, input_path: str, output_path: str, region_names_path: str
+    spark: SparkSession,
+    input_path: str,
+    region_names_path: str,
+    output_path: Optional[str] = None,
 ) -> Dict[str, DataFrame]:
     """
     Process Code-Point Open dataset by extracting a postcode dimension table
@@ -235,7 +239,7 @@ def write_postcode_table(
     df: DataFrame,
     region_names: Broadcast,
     countries: Broadcast,
-    output_path: str,
+    output_path: Optional[str],
     filename: str = "postcode.csv",
 ) -> DataFrame:
     """
@@ -255,10 +259,10 @@ def write_postcode_table(
     postcode_table = _add_region_name(postcode_table, region_names)
     postcode_table = postcode_table.select(
         ["postcode", "district", "country", "longitude", "latitude"]
-    )
-    postcode_table = postcode_table.filter("postcode == 'B12JB'")
-    postcode_table.write.csv(f"{output_path}/{filename}")
-    logger.info("Saved postcode table")
+    ).na.drop()
+    if output_path:
+        postcode_table.write.csv(f"{output_path}/{filename}")
+        logger.info("Saved postcode table")
     return postcode_table
 
 
@@ -266,12 +270,101 @@ def main():
     """Read data from S3, process the data using Spark, and write it back to S3."""
     spark = create_spark_session()
 
-    ppd_tables = get_ppd_tables(spark, PPD_PATH, OUTPUT_DATA, PPD_HEADERS)
+    get_ppd_tables(spark, PPD_PATH, OUTPUT_DATA, PPD_HEADERS)
     get_postcode_tables(spark, POSTCODE_PATH, OUTPUT_DATA, REGION_NAMES)
-    write_sale_table(ppd_tables["original"], ppd_tables["property"], OUTPUT_DATA)
 
     spark.stop()
 
 
 if __name__ == "__main__":
     main()
+
+
+# Utilities:
+
+
+def _get_ppd_headers(headers_path: str) -> List[str]:
+    """
+    Extract table headers from the PPD dataset description.
+    Args:
+        headers_path: Path to the PPD dataset description.
+
+    Returns: An ordered list of headers.
+    """
+    headers_df = pd.read_csv(headers_path, sep="\t")
+    headers = list(
+        map(
+            lambda col: col.strip().lower().replace(" ", "_").replace("/", "_"),
+            headers_df["Data item "],
+        )
+    )
+    return headers
+
+
+def _normalise_address(df: DataFrame) -> DataFrame:
+    """Concatenate street, primary and secondary lines into a single address."""
+    return df.withColumn(
+        "property_address",
+        f.udf(
+            lambda paon, saon, street: f"{street}; {paon}; {saon}"
+            if saon
+            else f"{street}; {paon}",
+            t.StringType(),
+        )(f.col("paon"), f.col("saon"), f.col("street")),
+    )
+
+
+def _normalise_postcode(df: DataFrame) -> DataFrame:
+    """Remove whitespaces from postcodes to ensure consistency."""
+    df = df.where(f.col("postcode").isNotNull())
+    df = df.withColumn(
+        "postcode",
+        f.udf(lambda code: code.strip().replace(" ", "").upper())(f.col("postcode")),
+    )
+    return df
+
+
+def _add_country_name(df: DataFrame, countries: Broadcast) -> DataFrame:
+    """Add a column with a country name based on the provided dictionary."""
+    df = df.withColumn(
+        "country",
+        f.udf(lambda country_code: countries.value[country_code[0]])(
+            f.col("country_code")
+        ),
+    )
+    return df
+
+
+def _add_region_name(df: DataFrame, region_names: Broadcast) -> DataFrame:
+    """Add a column with a region name based on the provided dictionary."""
+    df = df.withColumn(
+        "district",
+        f.udf(lambda code: region_names.value.get(code, None))(
+            f.col("admin_district_code")
+        ),
+    )
+    return df
+
+
+def _add_location(df: DataFrame) -> DataFrame:
+    """Convert BNG location (eastings and northings) into longitude and latitude."""
+    df = df.withColumn("eastings", df["eastings"].cast(t.IntegerType()))
+    df = df.withColumn("northings", df["northings"].cast(t.IntegerType()))
+    latitude = f.udf(lambda east, north: _bng_to_latlon(east, north), t.FloatType())
+    longitude = f.udf(
+        lambda east, north: _bng_to_latlon(east, north, lat=False), t.FloatType()
+    )
+    df = df.withColumn("latitude", latitude(f.col("eastings"), f.col("northings")))
+    df = df.withColumn("longitude", longitude(f.col("eastings"), f.col("northings")))
+    df = df.where(
+        f.col("latitude").isNotNull()
+    )  # clean up values that couldn't be converted
+    return df
+
+
+def _bng_to_latlon(east: int, north: int, lat=True) -> Optional[float]:
+    try:
+        res = utm.to_latlon(east, north, 30, "U")
+        return float(res[0]) if lat else float(res[1])
+    except ValueError as e:
+        return

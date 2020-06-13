@@ -1,21 +1,42 @@
 version: '3'
 services:
-  database:
-    image: "postgres"
-    env_file:
-      - .env
+  postgres:
+    image: postgres:9.6
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  webserver:
+    image: puckel/docker-airflow:1.10.9
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      - LOAD_EX=n
+      - EXECUTOR=Local
+      - FERNET_KEY=81HqDtbqAywKSOumSha3BhWNOdQ26slT6K0YaZeZyPs=
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
     volumes:
-      - pgdata:/var/lib/postgresql/data/
-      - output:/data
+      - ./dags:/usr/local/airflow/dags
+      - ./plugins:/usr/local/airflow/plugins
+      - ./spark_jobs:/usr/local/airflow/spark_jobs
     ports:
-    - 5432:5432
-    expose:
-      - 5432
+      - "8080:8080"
+    command: webserver
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f /usr/local/airflow/airflow-webserver.pid ]"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
 
 volumes:
   pgdata:
   output:
-
-#docker run --rm --network=host -v `pwd`/ouput:/data postgres \
-#  psql -h localhost -p 5432 -U postgres -c \
-#    "\\copy postcode FROM '/Users/rutargetuser/GoogleDrive/2020-2/Github/postgres-models/capstone/data/property.csv/' WITH csv"

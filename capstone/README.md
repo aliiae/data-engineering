@@ -1,3 +1,3 @@
-# StackOverflow + GitHub Analytics
+# UK House Prices on Map
 
-This is my Udacity Data Engineering Nanodegree capstone project.
+Please see UK_House_Prices_on_Map.ipynb.
